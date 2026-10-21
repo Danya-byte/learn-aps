@@ -1,8 +1,0 @@
-[    5942ms] [ERROR] [service]: Promozavr promos request failed {promozavrParams: Object} VError: Promozavr API Gateway returned invalid promo queues
-    at $a (https://volga.yandex.ru/document/assets/ClipboardService-Db8P6sG7.js:3:60002)
-    at eo (https://volga.yandex.ru/document/assets/ClipboardService-Db8P6sG7.js:3:61047)
-    at async co (https://volga.yandex.ru/document/assets/ClipboardService-Db8P6sG7.js:3:62201)
-    at async Ne.load (https://volga.yandex.ru/document/assets/PromoStore-CFNvB7wm.js:1:9335) @ https://volga.yandex.ru/document/assets/errorLogger-Cx7QYsAT.js:0
-[   31151ms] [ERROR] Failed to load resource: net::ERR_TIMED_OUT @ https://mc.yandex.ru/metrika/watch.js:0
-[   33398ms] [ERROR] Failed to load resource: net::ERR_TIMED_OUT @ https://mc.yandex.ru/metrika/tag.js:0
-[   33399ms] [ERROR] [common]: Failed to load metrika script @ https://volga.yandex.ru/document/assets/errorLogger-Cx7QYsAT.js:0
