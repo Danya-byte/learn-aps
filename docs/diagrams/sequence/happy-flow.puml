@@ -1,0 +1,99 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 14
+skinparam backgroundColor White
+skinparam shadowing false
+skinparam ArrowColor #334155
+skinparam LineColor #334155
+skinparam roundcorner 8
+skinparam NoteBackgroundColor #FFF8E7
+skinparam NoteBorderColor #C9A75A
+skinparam ParticipantBackgroundColor #EAF2FA
+skinparam ParticipantBorderColor #3C6382
+skinparam classBackgroundColor #F4F8FC
+skinparam classBorderColor #3C6382
+skinparam activityBackgroundColor #F4F8FC
+skinparam activityBorderColor #3C6382
+skinparam activityDiamondBackgroundColor #FFF8E7
+skinparam activityDiamondBorderColor #C9A75A
+skinparam swimlaneTitleBackgroundColor #EAF2FA
+skinparam swimlaneBorderColor #94A3B8
+skinparam maxMessageSize 90
+hide footbox
+skinparam maxMessageSize 210
+autonumber
+title Обычная обработка (Happy Flow) · Вариант 14
+
+participant "Движок\nSimulationEngine" as E
+participant "Клиент-источник\nSource" as S
+control "Постановка\nPlacementDispatcher" as P
+queue "Buffer" as B
+control "Выбор / пакет\nSelectionDispatcher" as D
+participant "WorkerPool" as W
+participant "EventCalendar" as C
+participant "StatisticsCollector" as ST
+
+note over E,W
+Буфер пуст, оба прибора свободны, пакета нет, workerPointer = 0.
+Следующее поступление произойдёт после завершения показанной заявки.
+end note
+== Поступление пользовательского запроса ==
+E -> C: next()
+C --> E: ARRIVAL(t, sourceId = 1)
+E -> E: now = t
+E -> S: generate(now)
+S --> E: request = 1.1
+E -> S: nextArrival(now)
+S --> E: nextTime
+note over S: ИБ, ИЗ1: независимый источник; интервал Exp(λ₁).
+opt nextTime ≤ T
+ E -> C: add(ARRIVAL(nextTime, 1))
+end
+E -> ST: recordGenerated(request, now)
+E -> P: place(request, now)
+P -> B: findFirstFree()
+B --> P: position = 0
+P -> B: put(request, 0)
+P --> E: null — выбивания нет
+E -> ST: recordAction(BUFFERED, request.id, now)
+note over P,B: Д1ОЗ3: первая свободная ячейка от начала буфера.
+== Формирование пакета и назначение ==
+E -> D: dispatch(now)
+D -> W: findFreeByRing()
+W --> D: workerId = 0
+D -> B: snapshotHighestPriority()
+B --> D: [1.1]
+D -> D: batch = BatchState.fromSnapshot([1.1])
+note over B,D: Д2Б5: зафиксирован пакет {1.1}; новые заявки в него не входят.
+D -> D: requestId = batch.nextWaiting()
+D -> B: extract(1.1)
+B --> D: request; ячейка 0 свободна
+D -> D: batch.markStarted(1.1)
+D -> ST: recordAction(SELECTED, 1.1, now)
+D -> W: start(0, request, now)
+W --> D: finishTime = now + U[a,b]
+note over D,W
+ПЗ2: равномерное время обслуживания.
+Д2П2: workerPointer = 1 после назначения прибору 0.
+end note
+D -> ST: recordStart(request, 0, now)
+D -> C: add(COMPLETION(finishTime, 0, 1.1))
+D --> E: Распределение закончено
+== Завершение агрегации ==
+E -> C: next()
+C --> E: COMPLETION(finishTime, 0, 1.1)
+E -> E: now = finishTime
+E -> W: finish(0, now)
+W --> E: request = 1.1; прибор свободен
+E -> ST: recordCompleted(request, 0, now)
+E -> D: onCompleted(1.1)
+E -> D: dispatch(now)
+D -> D: Пакет завершён; batch = null
+D -> W: findFreeByRing()
+W --> D: workerId = 1
+D -> B: snapshotHighestPriority()
+B --> D: [] — буфер пуст
+D --> E: Ожидать следующее поступление
+note over E,W: Результат агрегации возвращён пользователю. Указатель остаётся равным 1.
+
+@enduml

@@ -1,0 +1,71 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 14
+skinparam backgroundColor White
+skinparam shadowing false
+skinparam ArrowColor #334155
+skinparam LineColor #334155
+skinparam roundcorner 8
+skinparam NoteBackgroundColor #FFF8E7
+skinparam NoteBorderColor #C9A75A
+skinparam ParticipantBackgroundColor #EAF2FA
+skinparam ParticipantBorderColor #3C6382
+skinparam classBackgroundColor #F4F8FC
+skinparam classBorderColor #3C6382
+skinparam activityBackgroundColor #F4F8FC
+skinparam activityBorderColor #3C6382
+skinparam activityDiamondBackgroundColor #FFF8E7
+skinparam activityDiamondBorderColor #C9A75A
+skinparam swimlaneTitleBackgroundColor #EAF2FA
+skinparam swimlaneBorderColor #94A3B8
+skinparam maxMessageSize 90
+hide footbox
+title Вариант 14 · Агрегатор предложений\nОбщая схема событийного моделирования
+|Движок моделирования|
+start
+:Проверить параметры:\nN ≥ 1, M ≥ 1, B ≥ 1, λᵢ > 0,\n0 < a < b, T > 0;
+:now = 0; создать источники,\nпустой буфер, свободные приборы,\nдиспетчеры и статистику;\nbatch = null; workerPointer = 0;
+|Календарь событий|
+:Для каждого источника сгенерировать\nпервое ARRIVAL по ИЗ1;\nдобавить только события с time ≤ T;
+|Движок моделирования|
+while (Календарь не пуст?) is (да)
+ |Календарь событий|
+ :event = next();
+ note right
+ Порядок: время → тип → порядковый номер.
+ При равном времени COMPLETION раньше ARRIVAL.
+ end note
+ |Движок моделирования|
+ :now = event.time;
+ if (Тип события?) then (ARRIVAL)
+  :Подпроцесс А:\nгенерация и постановка запроса;\nзафиксировать отказ при выбивании;
+ else (COMPLETION)
+  |Обработчики|
+  :request = pool.finish(workerId, now);\nосвободить прибор; COMPLETED;
+  |Статистика|
+  :recordCompleted(request, workerId, now);\nучесть ожидание, обслуживание,\nпребывание и занятость прибора;
+  |Диспетчер выбора|
+  :onCompleted(request.id);\nудалить ID из inServiceIds пакета;
+ endif
+ |Диспетчер выбора|
+ :Подпроцесс Б: dispatch(now);\nраспределить ожидающие заявки\nтекущего пакета по свободным приборам;
+ |Движок моделирования|
+ :captureStep(event): сохранить схему,\nисточники, буфер, пакет, приборы,\nworkerPointer, статистику,\nкалендарь и журнал действий;
+ if (Пошаговый режим ОД2?) then (да)
+  :Показать состояние и таблицу календаря;\nожидать команду «Следующий шаг»;
+ else (нет)
+  :Продолжить автоматический прогон;
+ endif
+endwhile (нет)
+:Tobs = max(T, now);\nвсе созданные заявки завершены\nлибо получили отказ;
+|Статистика|
+:report(Tobs): сводная таблица ОР1\nпо источникам и приборам;
+stop
+legend bottom
+ARRIVAL — пользовательский клиент создаёт запрос на агрегацию.
+COMPLETION — обработчик завершает сбор и объединение предложений.
+T — конец генерации. После T система обслуживает оставшиеся заявки.
+Постановка, выбивание, выбор и начало обслуживания выполняются
+при текущем now и записываются в журнал действий этого шага.
+endlegend
+@enduml

@@ -1,0 +1,157 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 14
+skinparam backgroundColor White
+skinparam shadowing false
+skinparam ArrowColor #334155
+skinparam LineColor #334155
+skinparam roundcorner 8
+skinparam NoteBackgroundColor #FFF8E7
+skinparam NoteBorderColor #C9A75A
+skinparam ParticipantBackgroundColor #EAF2FA
+skinparam ParticipantBorderColor #3C6382
+skinparam classBackgroundColor #F4F8FC
+skinparam classBorderColor #3C6382
+skinparam activityBackgroundColor #F4F8FC
+skinparam activityBorderColor #3C6382
+skinparam activityDiamondBackgroundColor #FFF8E7
+skinparam activityDiamondBorderColor #C9A75A
+skinparam swimlaneTitleBackgroundColor #EAF2FA
+skinparam swimlaneBorderColor #94A3B8
+skinparam maxMessageSize 90
+hide footbox
+title Вариант 14 · Агрегация предложений по запросу пользователя\nПоступление, переполнение буфера, ожидание и обслуживание пакета
+skinparam maxMessageSize 220
+autonumber
+participant "Движок\nSimulationEngine" as E
+participant "Клиент-источник\nSource" as S
+control "Постановка\nPlacementDispatcher" as P
+queue "Очередь запросов\nBuffer" as B
+control "Выбор / пакет\nSelectionDispatcher" as D
+participant "Обработчики\nWorkerPool" as W
+participant "Календарь\nEventCalendar" as C
+participant "Статистика\nStatisticsCollector" as ST
+note over S
+ИБ: генерация независима от завершений.
+ИЗ1: интервалы Exp(λᵢ); поток Пуассона.
+end note
+note over B
+Д1ОЗ3: первая свободная ячейка от начала.
+Д1ОО3: при заполнении выбить старейшую.
+При равном createdAt — меньший ID.
+end note
+note over D,W
+Д2Б5: фиксированный пакет одного источника;
+меньший sourceId — выше приоритет; внутри FIFO.
+Д2П2: первый свободный прибор по кольцу.
+ПЗ2: время обслуживания U[a,b], 0 < a < b.
+end note
+
+loop Пока календарь не пуст
+ E -> C: next()
+ C --> E: event(time, type, payload)
+ E -> E: now = event.time
+ alt ARRIVAL — действие пользовательского клиента
+  E -> S: generate(now)
+  S --> E: request
+  E -> S: nextArrival(now)
+  S --> E: nextTime = now + Exp(λᵢ)
+  opt nextTime ≤ T
+   E -> C: add(ARRIVAL(nextTime, sourceId))
+  end
+  E -> ST: recordGenerated(request, now)
+  E -> P: place(request, now)
+  P -> B: findFirstFree()
+  B --> P: position или null
+  alt Место есть — обычная постановка
+   P -> B: put(request, position)
+  else Буфер заполнен — выбивание старейшей
+   P -> B: evictOldest()
+   B --> P: victim
+   P -> P: victim.markRejected(now)
+   P -> B: findFirstFree()
+   B --> P: освободившаяся position
+   P -> B: put(request, position)
+  end
+  P --> E: victim или null
+  opt victim != null
+   E -> ST: recordRejected(victim, now)
+   E -> D: onEvicted(victim.id)
+   D -> D: Удалить ID из waitingIds, если он входит в пакет
+   note over E,D
+   Отказ учитывается источнику victim.
+   Новая заявка остаётся в буфере; обслуживание не прерывается.
+   end note
+  end
+  E -> ST: recordAction(BUFFERED, request.id, now)
+ else COMPLETION — окончание сбора и объединения предложений
+  E -> W: finish(workerId, now)
+  W --> E: request; прибор свободен
+  E -> ST: recordCompleted(request, workerId, now)
+  E -> D: onCompleted(request.id)
+  D -> D: Удалить ID из inServiceIds пакета
+ end
+
+ E -> D: dispatch(now)
+ opt Пакет завершён: waitingIds = ∅ и inServiceIds = ∅
+  D -> D: batch = null
+ end
+ D -> D: continueDispatch = true
+ loop Пока continueDispatch = true
+  D -> W: findFreeByRing()
+  W --> D: workerId или null
+  alt Все приборы заняты
+   D -> D: continueDispatch = false
+   note over B,W
+   Заявки остаются в буфере; workerPointer не меняется.
+   При следующем COMPLETION распределение повторяется.
+   end note
+  else Есть свободный прибор
+   opt Текущего пакета нет
+    D -> B: snapshotHighestPriority()
+    B --> D: requests одного источника или пустой список
+    opt requests не пуст
+     D -> D: batch = BatchState.fromSnapshot(requests)
+     note over B,D
+     Снимок всех ожидающих заявок выбранного клиента.
+     Новые поступления, в том числе того же клиента,
+     не добавляются в этот пакет.
+     end note
+    end
+   end
+   alt batch = null — буфер пуст
+    D -> D: continueDispatch = false
+    note over D,W: Ожидать новый запрос; указатель не менять.
+   else Пакет существует
+    D -> D: requestId = batch.nextWaiting()
+    alt waitingIds пуст, но inServiceIds не пуст
+     D -> D: continueDispatch = false
+     note over B,W
+     Дождаться завершения текущего пакета.
+     Свободный прибор не принимает заявки другого пакета.
+     end note
+    else В пакете есть ожидающая заявка
+     D -> B: extract(requestId)
+     B --> D: request; ячейка свободна
+     D -> D: batch.markStarted(requestId)
+     D -> ST: recordAction(SELECTED, requestId, now)
+     D -> W: start(workerId, request, now)
+     W -> W: Worker.start(): PROCESSING; Δt ~ U[a,b]\nworkerPointer = (workerId + 1) mod M
+     W --> D: finishTime = now + Δt
+     D -> ST: recordStart(request, workerId, now)
+     D -> C: add(COMPLETION(finishTime, workerId, requestId))
+     D -> D: continueDispatch = в waitingIds остались заявки
+    end
+   end
+  end
+ end
+ D --> E: Распределение закончено
+ E -> E: captureStep(event): состояние, календарь, журнал
+end
+note over E,ST
+HappyFlow: свободный буфер + свободный прибор + нет незавершённого пакета
+→ постановка, создание пакета и начало обслуживания при одном now.
+Перегрузка: заполненный буфер + занятые приборы → выбивание и ожидание;
+следующее освобождение прибора запускает повторный выбор из текущего пакета.
+end note
+@enduml

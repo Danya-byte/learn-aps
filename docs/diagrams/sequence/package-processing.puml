@@ -1,0 +1,130 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 14
+skinparam backgroundColor White
+skinparam shadowing false
+skinparam ArrowColor #334155
+skinparam LineColor #334155
+skinparam roundcorner 8
+skinparam NoteBackgroundColor #FFF8E7
+skinparam NoteBorderColor #C9A75A
+skinparam ParticipantBackgroundColor #EAF2FA
+skinparam ParticipantBorderColor #3C6382
+skinparam classBackgroundColor #F4F8FC
+skinparam classBorderColor #3C6382
+skinparam activityBackgroundColor #F4F8FC
+skinparam activityBorderColor #3C6382
+skinparam activityDiamondBackgroundColor #FFF8E7
+skinparam activityDiamondBorderColor #C9A75A
+skinparam swimlaneTitleBackgroundColor #EAF2FA
+skinparam swimlaneBorderColor #94A3B8
+skinparam maxMessageSize 90
+hide footbox
+skinparam maxMessageSize 210
+autonumber
+title Фиксированный пакет и выбор по кольцу · Вариант 14
+
+participant "Движок\nSimulationEngine" as E
+control "Постановка\nPlacementDispatcher" as P
+queue "Buffer" as B
+control "Выбор / пакет\nSelectionDispatcher" as D
+participant "WorkerPool" as W
+participant "EventCalendar" as C
+participant "StatisticsCollector" as ST
+
+note over B,W
+В буфере [2.1, 2.2, 3.1]. Прибор 1 свободен.
+Завершается последняя заявка q предыдущего пакета на приборе 0.
+workerPointer = 1; меньший sourceId означает более высокий приоритет.
+end note
+== Формирование пакета при освобождении прибора ==
+E -> C: next()
+C --> E: COMPLETION(t, 0, q)
+E -> E: now = t
+E -> W: finish(0, now)
+W --> E: q; прибор 0 свободен
+E -> ST: recordCompleted(q, 0, now)
+E -> D: onCompleted(q.id)
+E -> D: dispatch(now)
+D -> D: Предыдущий пакет завершён; batch = null
+D -> W: findFreeByRing()
+W --> D: workerId = 1
+D -> B: snapshotHighestPriority()
+B --> D: [2.1, 2.2]
+D -> D: BatchState.fromSnapshot([2.1, 2.2])
+note over B,D
+Д2Б5: initialIds = {2.1, 2.2}; снимок больше не расширяется.
+Внутри пакета — FIFO по (createdAt, id).
+end note
+loop Назначить 2.1 на прибор 1, затем 2.2 на прибор 0
+ opt Второе назначение
+  D -> W: findFreeByRing()
+  W --> D: workerId = 0
+ end
+ D -> D: requestId = batch.nextWaiting()
+ D -> B: extract(requestId)
+ B --> D: request
+ D -> D: batch.markStarted(requestId)
+ D -> ST: recordAction(SELECTED, requestId, now)
+ D -> W: start(workerId, request, now)
+ W --> D: finishTime = now + U[a,b]
+ D -> ST: recordStart(request, workerId, now)
+ D -> C: add(COMPLETION(finishTime, workerId, requestId))
+end
+D --> E: Распределение закончено
+note over D,W
+Д2П2: после прибора 1 указатель 0, после прибора 0 — 1.
+ПЗ2: длительность каждой заявки выбирается из U[a,b].
+end note
+== Новая заявка того же клиента ==
+ref over E,B
+Подпроцесс А: ARRIVAL источника 2; создана 2.3,
+поставлена в первую свободную ячейку по Д1ОЗ3.
+ИЗ1: интервалы поступления Exp(λ₂).
+end ref
+E -> D: dispatch(now)
+D -> W: findFreeByRing()
+W --> D: null — оба прибора заняты
+D --> E: Ожидать завершение
+note over B,D: 2.3 остаётся в буфере; initialIds текущего пакета = {2.1, 2.2}.
+== Первый прибор свободен, но пакет ещё активен ==
+E -> C: next()
+C --> E: COMPLETION(t₁, 1, 2.1)
+E -> E: now = t₁
+E -> W: finish(1, now)
+W --> E: request = 2.1
+E -> ST: recordCompleted(request, 1, now)
+E -> D: onCompleted(2.1)
+E -> D: dispatch(now)
+D -> W: findFreeByRing()
+W --> D: workerId = 1
+D -> D: batch.nextWaiting() → null
+D --> E: Ждать 2.2; прибор 1 простаивает
+note over D,W: waitingIds пуст; inServiceIds = {2.2}. Пакет ещё не завершён.
+== Полное завершение и новый пакет ==
+E -> C: next()
+C --> E: COMPLETION(t₂, 0, 2.2)
+E -> E: now = t₂
+E -> W: finish(0, now)
+W --> E: request = 2.2
+E -> ST: recordCompleted(request, 0, now)
+E -> D: onCompleted(2.2)
+E -> D: dispatch(now)
+D -> D: waitingIds = ∅; inServiceIds = ∅; batch = null
+D -> W: findFreeByRing()
+W --> D: workerId = 1
+D -> B: snapshotHighestPriority()
+B --> D: [2.3]; заявка 3.1 пока ожидает
+D -> D: batch = BatchState.fromSnapshot([2.3])
+D -> D: batch.nextWaiting() → 2.3
+D -> B: extract(2.3)
+B --> D: request = 2.3
+D -> D: batch.markStarted(2.3)
+D -> ST: recordAction(SELECTED, 2.3, now)
+D -> W: start(1, request, now)
+W --> D: finishTime = now + U[a,b]
+D -> ST: recordStart(request, 1, now)
+D -> C: add(COMPLETION(finishTime, 1, 2.3))
+D --> E: Распределение закончено; workerPointer = 0
+
+@enduml

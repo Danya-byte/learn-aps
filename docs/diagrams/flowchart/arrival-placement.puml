@@ -1,0 +1,79 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 14
+skinparam backgroundColor White
+skinparam shadowing false
+skinparam ArrowColor #334155
+skinparam LineColor #334155
+skinparam roundcorner 8
+skinparam NoteBackgroundColor #FFF8E7
+skinparam NoteBorderColor #C9A75A
+skinparam ParticipantBackgroundColor #EAF2FA
+skinparam ParticipantBorderColor #3C6382
+skinparam classBackgroundColor #F4F8FC
+skinparam classBorderColor #3C6382
+skinparam activityBackgroundColor #F4F8FC
+skinparam activityBorderColor #3C6382
+skinparam activityDiamondBackgroundColor #FFF8E7
+skinparam activityDiamondBorderColor #C9A75A
+skinparam swimlaneTitleBackgroundColor #EAF2FA
+skinparam swimlaneBorderColor #94A3B8
+skinparam maxMessageSize 90
+hide footbox
+title Вариант 14 · Подпроцесс А\nГенерация и постановка пользовательского запроса
+|Источник|
+start
+:Получить ARRIVAL(sourceId, now);\nrequest = source.generate(now);\nсохранить ID, sourceId, параметры поиска;\ncreatedAt = now; status = CREATED;
+:nextTime = source.nextArrival(now);\nΔt ~ Exp(λᵢ), λᵢ > 0 — ИЗ1;
+if (nextTime ≤ T?) then (да)
+ |Календарь событий|
+ :add(ARRIVAL(nextTime, sourceId));
+else (нет)
+ |Источник|
+ :Закончить генерацию этого источника;
+endif
+|Статистика|
+:recordGenerated(request, now);\nувеличить счётчик источника request;
+|Диспетчер постановки|
+:place(request, now);\nposition = buffer.findFirstFree();
+note right
+Д1ОЗ3: искать с ячейки 0,
+выбрать первое свободное место.
+Указателя постановки нет.
+end note
+if (Свободное место найдено?) then (да)
+ :victim = null;
+else (нет)
+ |Буфер|
+ :victim = evictOldest();\nудалить минимум (createdAt, id)\nсреди ожидающих заявок — Д1ОО3;
+ |Диспетчер постановки|
+ :victim.markRejected(now);\nposition = buffer.findFirstFree();
+endif
+|Буфер|
+:put(request, position);\nrequest.markBuffered();\nостальные ячейки не сдвигать;
+|Диспетчер постановки|
+:Вернуть victim либо null движку;
+|Статистика|
+if (Есть выбитая заявка?) then (да)
+ :recordRejected(victim, now);\nотказ относится к источнику victim;
+ |Диспетчер выбора|
+ :onEvicted(victim.id);
+ if (victim входит в waitingIds\nтекущего пакета?) then (да)
+  :Удалить victim.id из waitingIds;\ninitialIds не изменять;
+ else (нет)
+  :Состав текущего пакета не изменять;
+ endif
+else (нет)
+endif
+|Статистика|
+:recordAction(BUFFERED, request.id, now);
+|Движок моделирования|
+:Вернуться в общий цикл;\nследующее действие — подпроцесс Б;
+stop
+legend bottom
+ИБ — источник создаёт новые запросы независимо от ранее созданных.
+Новая заявка сохраняется в буфере; отказ получает выбитая старая.
+На обработчике заявки не выбиваются и не прерываются.
+Новая заявка не включается в уже существующий пакет.
+endlegend
+@enduml

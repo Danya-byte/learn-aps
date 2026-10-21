@@ -1,0 +1,232 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 14
+skinparam backgroundColor White
+skinparam shadowing false
+skinparam ArrowColor #334155
+skinparam LineColor #334155
+skinparam roundcorner 8
+skinparam NoteBackgroundColor #FFF8E7
+skinparam NoteBorderColor #C9A75A
+skinparam ParticipantBackgroundColor #EAF2FA
+skinparam ParticipantBorderColor #3C6382
+skinparam classBackgroundColor #F4F8FC
+skinparam classBorderColor #3C6382
+skinparam activityBackgroundColor #F4F8FC
+skinparam activityBorderColor #3C6382
+skinparam activityDiamondBackgroundColor #FFF8E7
+skinparam activityDiamondBorderColor #C9A75A
+skinparam swimlaneTitleBackgroundColor #EAF2FA
+skinparam swimlaneBorderColor #94A3B8
+skinparam maxMessageSize 90
+hide footbox
+!pragma layout smetana
+title Вариант 14 · Агрегатор предложений\nДиаграмма классов имитационной модели
+skinparam classAttributeIconSize 0
+skinparam nodesep 35
+skinparam ranksep 70
+top to bottom direction
+
+class SimulationEngine {
+ - now: double
+ - generationHorizon: double
+ - sources: Source[]
+ - buffer: Buffer
+ - pool: WorkerPool
+ - calendar: EventCalendar
+ - placement: PlacementDispatcher
+ - selection: SelectionDispatcher
+ - statistics: StatisticsCollector
+ + initialize(): void
+ + step(): StepSnapshot
+ + run(): StatisticsReport
+ - handleArrival(event: ScheduledEvent): void
+ - handleCompletion(event: ScheduledEvent): void
+ - captureStep(event: ScheduledEvent): StepSnapshot
+}
+class Source {
+ - id: int
+ - lambda: double
+ - sequenceNumber: long
+ - rng: RandomGenerator
+ + generate(time: double): Request
+ + nextArrival(time: double): double
+ + snapshot(): SourceSnapshot
+}
+class Request {
+ - id: RequestId
+ - sourceId: int
+ - sequenceNumber: long
+ - searchParams: SearchParams
+ - createdAt: double
+ - serviceStartedAt: double?
+ - completedAt: double?
+ - rejectedAt: double?
+ - status: RequestStatus
+ + markBuffered(): void
+ + markProcessing(time: double): void
+ + markCompleted(time: double): void
+ + markRejected(time: double): void
+ + getId(): RequestId
+ + getSourceId(): int
+ + getCreatedAt(): double
+ + getServiceStartedAt(): double?
+ + snapshot(): RequestSnapshot
+}
+class PlacementDispatcher {
+ - buffer: Buffer
+ + place(request: Request, time: double): Request?
+}
+class Buffer {
+ - capacity: int
+ - slots: Request?[]
+ + findFirstFree(): int?
+ + evictOldest(): Request
+ + put(request: Request, position: int): void
+ + snapshotHighestPriority(): Request[]
+ + extract(id: RequestId): Request
+ + snapshot(): BufferSnapshot
+}
+class SelectionDispatcher {
+ - buffer: Buffer
+ - pool: WorkerPool
+ - calendar: EventCalendar
+ - statistics: StatisticsCollector
+ - batch: BatchState?
+ + onEvicted(id: RequestId): void
+ + onCompleted(id: RequestId): void
+ + dispatch(time: double): void
+ + snapshot(): BatchSnapshot?
+}
+class BatchState {
+ - sourceId: int
+ - initialIds: Set<RequestId>
+ - waitingIds: OrderedSet<RequestId>
+ - inServiceIds: Set<RequestId>
+ {static} + fromSnapshot(requests: Request[]): BatchState
+ + nextWaiting(): RequestId?
+ + markStarted(id: RequestId): void
+ + removeEvicted(id: RequestId): void
+ + markCompleted(id: RequestId): void
+ + isFinished(): boolean
+}
+class WorkerPool {
+ - workers: Worker[]
+ - workerPointer: int
+ + findFreeByRing(): int?
+ + start(workerId: int, request: Request, time: double): double
+ + finish(workerId: int, time: double): Request
+ + snapshot(): WorkerPoolSnapshot
+}
+class Worker {
+ - id: int
+ - currentRequest: Request?
+ - finishAt: double?
+ - serviceMin: double
+ - serviceMax: double
+ - rng: RandomGenerator
+ + isFree(): boolean
+ + start(request: Request, time: double): double
+ + finish(time: double): Request
+ + snapshot(): WorkerSnapshot
+}
+class EventCalendar {
+ - events: PriorityQueue<ScheduledEvent>
+ - nextSequenceNumber: long
+ + add(event: ScheduledEvent): void
+ + next(): ScheduledEvent
+ + isEmpty(): boolean
+ + snapshot(): ScheduledEvent[]
+}
+class ScheduledEvent {
+ - time: double
+ - type: EventType
+ - sequenceNumber: long
+ - sourceId: int?
+ - workerId: int?
+ - requestId: RequestId?
+ {static} + arrival(time: double, sourceId: int): ScheduledEvent
+ {static} + completion(time: double, workerId: int, requestId: RequestId): ScheduledEvent
+ + getTime(): double
+ + getType(): EventType
+}
+class StatisticsCollector {
+ - generatedBySource: Map<int, long>
+ - rejectedBySource: Map<int, long>
+ - completedBySource: Map<int, long>
+ - waitingMoments: Map<int, RunningMoments>
+ - serviceMoments: Map<int, RunningMoments>
+ - systemMoments: Map<int, RunningMoments>
+ - busyTimeByWorker: Map<int, double>
+ - activeByWorker: Map<int, ActiveService>
+ - journal: JournalEntry[]
+ + recordGenerated(request: Request, time: double): void
+ + recordRejected(request: Request, time: double): void
+ + recordStart(request: Request, workerId: int, time: double): void
+ + recordCompleted(request: Request, workerId: int, time: double): void
+ + recordAction(kind: ActionKind, requestId: RequestId, time: double): void
+ + snapshot(time: double): StatisticsSnapshot
+ + report(observationTime: double): StatisticsReport
+}
+
+SimulationEngine --> Source
+SimulationEngine --> PlacementDispatcher
+SimulationEngine --> SelectionDispatcher
+SimulationEngine --> Buffer
+SimulationEngine --> WorkerPool
+SimulationEngine --> EventCalendar
+SimulationEngine --> StatisticsCollector
+PlacementDispatcher --> Buffer
+PlacementDispatcher ..> Request : принимает; возвращает выбитую
+SelectionDispatcher --> Buffer
+SelectionDispatcher --> WorkerPool
+SelectionDispatcher --> EventCalendar
+SelectionDispatcher --> StatisticsCollector
+SelectionDispatcher *-- "0..1" BatchState
+WorkerPool *-- "1..*" Worker
+Worker --> "0..1" Request : обслуживает
+Buffer o-- "0..capacity" Request : ожидают
+Source ..> Request : создаёт
+EventCalendar o-- "0..*" ScheduledEvent
+
+note bottom of BatchState
+Д2Б5: снимок заявок одного источника.
+Меньший sourceId — выше приоритет.
+initialIds неизменен; новые заявки не входят.
+waitingIds упорядочен по (createdAt, id).
+Пакет завершён, только если
+waitingIds и inServiceIds пусты.
+end note
+note bottom of WorkerPool
+Д2П2: поиск от workerPointer по кольцу.
+findFreeByRing() не меняет указатель.
+start() передвигает его за назначенный прибор.
+ПЗ2: Worker.start() выбирает U[a,b], 0 < a < b,
+возвращает время завершения.
+end note
+note bottom of Buffer
+Д1ОЗ3: первое свободное место с индекса 0.
+Д1ОО3: evictOldest() удаляет минимум (createdAt, id).
+После удаления нет сдвига остальных ячеек.
+snapshotHighestPriority() возвращает все ожидающие
+заявки источника с минимальным sourceId.
+end note
+note bottom of ScheduledEvent
+EventType = ARRIVAL | COMPLETION.
+Ключ календаря: (time, typePriority, sequenceNumber).
+COMPLETION раньше ARRIVAL при равном времени.
+ARRIVAL содержит sourceId; COMPLETION — workerId, requestId.
+end note
+note bottom of Source
+ИБ: новый запрос не зависит от завершения старого.
+ИЗ1: nextArrival(t) = t + Exp(lambda).
+RequestId — пара (sourceId, sequenceNumber).
+end note
+legend bottom
+RequestStatus: CREATED → IN_BUFFER → PROCESSING → COMPLETED;
+из IN_BUFFER возможен переход в REJECTED.
+Типы *Snapshot, StatisticsReport, SearchParams, RunningMoments,
+JournalEntry и ActionKind — структуры данных, описанные в docs/model.md.
+Все поля приватные; «?» означает допустимое отсутствие значения.
+endlegend
+@enduml

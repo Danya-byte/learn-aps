@@ -1,0 +1,98 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 14
+skinparam backgroundColor White
+skinparam shadowing false
+skinparam ArrowColor #334155
+skinparam LineColor #334155
+skinparam roundcorner 8
+skinparam NoteBackgroundColor #FFF8E7
+skinparam NoteBorderColor #C9A75A
+skinparam ParticipantBackgroundColor #EAF2FA
+skinparam ParticipantBorderColor #3C6382
+skinparam classBackgroundColor #F4F8FC
+skinparam classBorderColor #3C6382
+skinparam activityBackgroundColor #F4F8FC
+skinparam activityBorderColor #3C6382
+skinparam activityDiamondBackgroundColor #FFF8E7
+skinparam activityDiamondBorderColor #C9A75A
+skinparam swimlaneTitleBackgroundColor #EAF2FA
+skinparam swimlaneBorderColor #94A3B8
+skinparam maxMessageSize 90
+hide footbox
+skinparam maxMessageSize 210
+autonumber
+title Переполнение и последующее обслуживание · Вариант 14
+
+participant "Движок\nSimulationEngine" as E
+participant "Клиент-источник\nSource" as S
+control "Постановка\nPlacementDispatcher" as P
+queue "Buffer" as B
+control "Выбор / пакет\nSelectionDispatcher" as D
+participant "WorkerPool" as W
+participant "EventCalendar" as C
+participant "StatisticsCollector" as ST
+
+note over B,W
+Текущий пакет источника 2: прибор 0 обслуживает 2.1,
+прибор 1 — 2.2; заявка 2.3 ещё ожидает в буфере.
+Буфер заполнен: [3.1, 2.3, 4.1]. Старейшая — 3.1.
+workerPointer = 1. Поступает новая заявка 1.1.
+end note
+== Переполнение при занятых приборах ==
+E -> S: generate(now)
+S --> E: request = 1.1
+note over S: ИБ, ИЗ1: запрос пользователя; интервалы Exp(λᵢ).
+E -> ST: recordGenerated(request, now)
+E -> P: place(request, now)
+P -> B: findFirstFree()
+B --> P: null — буфер заполнен
+P -> B: evictOldest()
+B --> P: victim = 3.1
+P -> P: victim.markRejected(now)
+P -> B: findFirstFree()
+B --> P: position = 0
+P -> B: put(request, 0)
+P --> E: victim = 3.1
+E -> ST: recordRejected(victim, now)
+E -> D: onEvicted(3.1)
+D -> D: ID 3.1 не входит в пакет — состав не меняется
+E -> ST: recordAction(BUFFERED, 1.1, now)
+note over P,B
+Д1ОО3: отказ старейшей ожидающей заявке 3.1.
+Д1ОЗ3: новая 1.1 занимает освободившуюся ячейку 0.
+Остальные ячейки не сдвигаются.
+end note
+E -> D: dispatch(now)
+D -> W: findFreeByRing()
+W --> D: null — оба прибора заняты
+D --> E: Ожидать; workerPointer = 1
+== Освобождение прибора запускает выбор ==
+E -> C: next()
+C --> E: COMPLETION(t, 0, 2.1)
+E -> E: now = t
+E -> W: finish(0, now)
+W --> E: request = 2.1; прибор 0 свободен
+E -> ST: recordCompleted(request, 0, now)
+E -> D: onCompleted(2.1)
+E -> D: dispatch(now)
+D -> W: findFreeByRing()
+W --> D: workerId = 0; прибор 1 занят
+note over D,W: Д2П2: поиск от 1, затем 0; выбран первый свободный.
+D -> D: batch.nextWaiting() → 2.3
+D -> B: extract(2.3)
+B --> D: request = 2.3; ячейка 1 свободна
+D -> D: batch.markStarted(2.3)
+D -> ST: recordAction(SELECTED, 2.3, now)
+D -> W: start(0, request, now)
+W --> D: finishTime = now + U[a,b]
+D -> ST: recordStart(request, 0, now)
+D -> C: add(COMPLETION(finishTime, 0, 2.3))
+D --> E: Распределение закончено; workerPointer = 1
+note over B,W
+Д2Б5: обслуживается 2.3 из текущего пакета.
+Новая 1.1 с более высоким приоритетом ждёт завершения пакета.
+ПЗ2: равномерное обслуживание; прибор не выдаёт отказ.
+end note
+
+@enduml

@@ -1,0 +1,89 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 14
+skinparam backgroundColor White
+skinparam shadowing false
+skinparam ArrowColor #334155
+skinparam LineColor #334155
+skinparam roundcorner 8
+skinparam NoteBackgroundColor #FFF8E7
+skinparam NoteBorderColor #C9A75A
+skinparam ParticipantBackgroundColor #EAF2FA
+skinparam ParticipantBorderColor #3C6382
+skinparam classBackgroundColor #F4F8FC
+skinparam classBorderColor #3C6382
+skinparam activityBackgroundColor #F4F8FC
+skinparam activityBorderColor #3C6382
+skinparam activityDiamondBackgroundColor #FFF8E7
+skinparam activityDiamondBorderColor #C9A75A
+skinparam swimlaneTitleBackgroundColor #EAF2FA
+skinparam swimlaneBorderColor #94A3B8
+skinparam maxMessageSize 90
+hide footbox
+title Вариант 14 · Подпроцесс Б\nВыбор пакета и назначение заявок на обработчики
+|Диспетчер выбора|
+start
+:dispatch(now) после ARRIVAL\nили COMPLETION;
+if (Пакет существует\nи isFinished()?) then (да)
+ :Сбросить завершённый пакет:\nbatch = null;
+else (нет)
+endif
+repeat
+ |Пул обработчиков|
+ :workerId = findFreeByRing();\nпоиск от workerPointer с переходом\nчерез конец массива — Д2П2;
+ if (Свободный прибор найден?) then (да)
+ else (нет)
+  |Диспетчер выбора|
+  :Все приборы заняты;\nоставить заявки в буфере;\nуказатель не изменять;
+  stop
+ endif
+ |Диспетчер выбора|
+ if (batch = null?) then (да)
+  |Буфер|
+  :requests = snapshotHighestPriority();\nвсе ожидающие заявки источника\nс минимальным sourceId;
+  if (Снимок пуст?) then (да)
+   |Диспетчер выбора|
+   :Ожидать новое событие;\nуказатель не изменять;
+   stop
+  else (нет)
+   |Диспетчер выбора|
+   :batch = BatchState.fromSnapshot(requests);\nзафиксировать initialIds и waitingIds;\ninServiceIds = ∅ — Д2Б5;
+   note right
+   Пакет фиксируется перед выбором
+   первой заявки и больше не расширяется.
+   При запуске простаивающей системы
+   достаточно поступления первого запроса.
+   end note
+  endif
+ else (нет)
+ endif
+ :requestId = batch.nextWaiting();\nпорядок (createdAt, id) — FIFO;
+ if (Есть ожидающий участник пакета?) then (да)
+ else (нет)
+  :Ожидать завершения заявок inServiceIds;\nсвободные приборы простаивают;\nдругие заявки остаются в буфере;
+  stop
+ endif
+ |Буфер|
+ :request = extract(requestId);\nосвободить ячейку без сдвига;
+ |Диспетчер выбора|
+ :batch.markStarted(requestId);\nперенести ID из waitingIds в inServiceIds;
+ |Статистика|
+ :recordAction(SELECTED, requestId, now);
+ |Пул обработчиков|
+ :finishTime = start(workerId, request, now);\nrequest.markProcessing(now);\nдлительность ~ U[a,b] — ПЗ2;\nfinishTime = now + длительность;
+ :workerPointer = (workerId + 1) mod M;
+ |Статистика|
+ :recordStart(request, workerId, now);
+ |Календарь событий|
+ :add(COMPLETION(finishTime,\nworkerId, requestId));
+ |Диспетчер выбора|
+repeat while (В пакете остались waitingIds?) is (да) not (нет)
+:Вернуться в общий цикл;\nследующее распределение —\nпосле нового календарного события;
+stop
+legend bottom
+Все приборы обслуживают только один текущий пакет.
+Новый пакет выбирается, когда waitingIds = ∅ и inServiceIds = ∅.
+Если заявка пакета выбита, её ID удаляется из waitingIds в подпроцессе А.
+Окончание обслуживания и удаление ID из inServiceIds — в общем цикле.
+endlegend
+@enduml
