@@ -20,15 +20,15 @@ skinparam swimlaneTitleBackgroundColor #EAF2FA
 skinparam swimlaneBorderColor #94A3B8
 skinparam maxMessageSize 90
 hide footbox
-title Вариант 14 · Агрегация предложений по запросу пользователя\nПоступление, переполнение буфера, ожидание и обслуживание пакета
+title Вариант 14 · Обработка обновлений предложений\nПоступление, переполнение буфера, ожидание и обслуживание пакета
 skinparam maxMessageSize 220
 autonumber
 participant "Движок\nSimulationEngine" as E
 participant "Клиент-источник\nSource" as S
-control "Постановка\nPlacementDispatcher" as P
-queue "Очередь запросов\nBuffer" as B
-control "Выбор / пакет\nSelectionDispatcher" as D
-participant "Обработчики\nWorkerPool" as W
+control "Приём обновлений\nPlacementDispatcher" as P
+queue "Очередь обновлений\nBuffer" as B
+control "Планировщик обновлений\nSelectionDispatcher" as D
+participant "Worker-процессы\nWorkerPool" as W
 participant "Календарь\nEventCalendar" as C
 participant "Статистика\nStatisticsCollector" as ST
 note over S
@@ -79,7 +79,7 @@ loop Пока календарь не пуст
    E -> D: onEvicted(victim.id)
    D -> D: Удалить ID из waitingIds, если он входит в пакет
    note over E,D
-   Отказ учитывается источнику victim.
+   Отказ (потеря обновления) учитывается источнику victim.
    Новая заявка остаётся в буфере; обслуживание не прерывается.
    end note
   end

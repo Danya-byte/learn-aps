@@ -26,10 +26,10 @@ title Переполнение и последующее обслуживани�
 
 participant "Движок\nSimulationEngine" as E
 participant "Клиент-источник\nSource" as S
-control "Постановка\nPlacementDispatcher" as P
-queue "Buffer" as B
-control "Выбор / пакет\nSelectionDispatcher" as D
-participant "WorkerPool" as W
+control "Приём обновлений\nPlacementDispatcher" as P
+queue "Очередь обновлений\nBuffer" as B
+control "Планировщик обновлений\nSelectionDispatcher" as D
+participant "Worker-процессы\nWorkerPool" as W
 participant "EventCalendar" as C
 participant "StatisticsCollector" as ST
 
@@ -59,7 +59,7 @@ E -> D: onEvicted(3.1)
 D -> D: ID 3.1 не входит в пакет — состав не меняется
 E -> ST: recordAction(BUFFERED, 1.1, now)
 note over P,B
-Д1ОО3: отказ старейшей ожидающей заявке 3.1.
+Д1ОО3: отказ старейшей ожидающей заявке 3.1 — обновление потеряно.
 Д1ОЗ3: новая 1.1 занимает освободившуюся ячейку 0.
 Остальные ячейки не сдвигаются.
 end note

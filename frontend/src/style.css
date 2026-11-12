@@ -1,0 +1,44 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  color: #1e293b;
+  background: #f8fafc;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 16px 0 8px;
+}
+
+table {
+  border-collapse: collapse;
+  background: white;
+}
+
+th,
+td {
+  border: 1px solid #cbd5e1;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+th {
+  background: #eaf2fa;
+}
+
+button {
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+.panel {
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px 12px;
+}

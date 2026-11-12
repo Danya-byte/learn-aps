@@ -20,7 +20,7 @@ skinparam swimlaneTitleBackgroundColor #EAF2FA
 skinparam swimlaneBorderColor #94A3B8
 skinparam maxMessageSize 90
 hide footbox
-title Вариант 14 · Подпроцесс Б\nВыбор пакета и назначение заявок на обработчики
+title Вариант 14 · Подпроцесс Б\nВыбор пакета и назначение заявок на worker-процессы
 |Диспетчер выбора|
 start
 :dispatch(now) после ARRIVAL\nили COMPLETION;
@@ -29,7 +29,7 @@ if (Пакет существует\nи isFinished()?) then (да)
 else (нет)
 endif
 repeat
- |Пул обработчиков|
+ |Пул worker-процессов|
  :workerId = findFreeByRing();\nпоиск от workerPointer с переходом\nчерез конец массива — Д2П2;
  if (Свободный прибор найден?) then (да)
  else (нет)
@@ -69,7 +69,7 @@ repeat
  :batch.markStarted(requestId);\nперенести ID из waitingIds в inServiceIds;
  |Статистика|
  :recordAction(SELECTED, requestId, now);
- |Пул обработчиков|
+ |Пул worker-процессов|
  :finishTime = start(workerId, request, now);\nrequest.markProcessing(now);\nдлительность ~ U[a,b] — ПЗ2;\nfinishTime = now + длительность;
  :workerPointer = (workerId + 1) mod M;
  |Статистика|

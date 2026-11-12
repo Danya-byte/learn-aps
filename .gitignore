@@ -1,2 +1,5 @@
 .idea
 .playwright-mcp
+.venv
+node_modules
+dist

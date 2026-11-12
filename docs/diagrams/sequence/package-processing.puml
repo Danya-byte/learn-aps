@@ -25,10 +25,10 @@ autonumber
 title Фиксированный пакет и выбор по кольцу · Вариант 14
 
 participant "Движок\nSimulationEngine" as E
-control "Постановка\nPlacementDispatcher" as P
-queue "Buffer" as B
-control "Выбор / пакет\nSelectionDispatcher" as D
-participant "WorkerPool" as W
+control "Приём обновлений\nPlacementDispatcher" as P
+queue "Очередь обновлений\nBuffer" as B
+control "Планировщик обновлений\nSelectionDispatcher" as D
+participant "Worker-процессы\nWorkerPool" as W
 participant "EventCalendar" as C
 participant "StatisticsCollector" as ST
 

@@ -26,10 +26,10 @@ title Обычная обработка (Happy Flow) · Вариант 14
 
 participant "Движок\nSimulationEngine" as E
 participant "Клиент-источник\nSource" as S
-control "Постановка\nPlacementDispatcher" as P
-queue "Buffer" as B
-control "Выбор / пакет\nSelectionDispatcher" as D
-participant "WorkerPool" as W
+control "Приём обновлений\nPlacementDispatcher" as P
+queue "Очередь обновлений\nBuffer" as B
+control "Планировщик обновлений\nSelectionDispatcher" as D
+participant "Worker-процессы\nWorkerPool" as W
 participant "EventCalendar" as C
 participant "StatisticsCollector" as ST
 
@@ -79,7 +79,7 @@ end note
 D -> ST: recordStart(request, 0, now)
 D -> C: add(COMPLETION(finishTime, 0, 1.1))
 D --> E: Распределение закончено
-== Завершение агрегации ==
+== Завершение обработки обновления ==
 E -> C: next()
 C --> E: COMPLETION(finishTime, 0, 1.1)
 E -> E: now = finishTime
@@ -94,6 +94,6 @@ W --> D: workerId = 1
 D -> B: snapshotHighestPriority()
 B --> D: [] — буфер пуст
 D --> E: Ожидать следующее поступление
-note over E,W: Результат агрегации возвращён пользователю. Указатель остаётся равным 1.
+note over E,W: Каталог обновлён. Указатель остаётся равным 1.
 
 @enduml
